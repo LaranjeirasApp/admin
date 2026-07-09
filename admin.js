@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, set, get, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, inMemoryPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, inMemoryPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
 import { firebaseConfig, VAPID_KEY } from "./firebase-config.js";
 
@@ -8,8 +8,16 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-await setPersistence(auth, inMemoryPersistence);
-if (auth.currentUser && auth.currentUser.isAnonymous) await signOut(auth);
+const LEMBRAR_LOGIN_KEY = "lembrarLoginAdmin";
+const lembrarLoginSalvo = localStorage.getItem(LEMBRAR_LOGIN_KEY) === "1";
+try {
+  await setPersistence(auth, lembrarLoginSalvo ? browserLocalPersistence : inMemoryPersistence);
+  if (auth.currentUser && auth.currentUser.isAnonymous) await signOut(auth);
+} catch (e) {
+  console.warn("Persistência de auth indisponível, seguindo com o padrão:", e);
+}
+const checkLembrar = document.getElementById("loginLembrar");
+if (checkLembrar) checkLembrar.checked = lembrarLoginSalvo;
 
 let messaging = null;
 try { messaging = getMessaging(app); } catch (e) { console.warn("Messaging indisponível:", e); }
@@ -163,6 +171,7 @@ function escolherQuadra({ titulo = "Escolher quadra", texto = "", idsDisponiveis
       overlay.classList.remove("show");
       grid.querySelectorAll("button").forEach((b) => (b.onclick = null));
       btnCancelar.onclick = null;
+      overlay.onclick = null;
       resolve(valor);
     }
 
@@ -170,6 +179,9 @@ function escolherQuadra({ titulo = "Escolher quadra", texto = "", idsDisponiveis
       b.onclick = () => fechar(Number(b.dataset.id));
     });
     btnCancelar.onclick = () => fechar(null);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) fechar(null);
+    };
     overlay.classList.add("show");
   });
 }
@@ -238,8 +250,12 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     document.getElementById("loginPass").value = "";
     return;
   }
+  const lembrar = document.getElementById("loginLembrar")?.checked === true;
   try {
     if (auth.currentUser && auth.currentUser.isAnonymous) await signOut(auth);
+    await setPersistence(auth, lembrar ? browserLocalPersistence : inMemoryPersistence).catch((e) => console.warn("Persistência indisponível:", e));
+    if (lembrar) localStorage.setItem(LEMBRAR_LOGIN_KEY, "1");
+    else localStorage.removeItem(LEMBRAR_LOGIN_KEY);
     const cred = await signInWithEmailAndPassword(auth, `${usuario}${ADMIN_LOGIN_DOMAIN}`, senha);
     const permitido = await usuarioEhAdmin(cred.user);
     if (!permitido) {
@@ -261,6 +277,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
 
 document.getElementById("btnLogout").addEventListener("click", async () => {
   adminUsuarioAtual = ""; adminNomeAtual = "";
+  localStorage.removeItem(LEMBRAR_LOGIN_KEY);
   await signOut(auth);
   bloquearPainelAdmin();
   irParaTela(0);
@@ -501,6 +518,7 @@ window.togglePausa = function (i) {
 async function despacharFila(idx, quadraId) {
   const q = quadras.find((x) => x.id === quadraId);
   if (!q) return avisoAdmin(`Quadra ${quadraId} não encontrada.`);
+  if (q.ocupada) return avisoAdmin(`A Quadra ${quadraId} já está ocupada. Atualize a tela ou escolha outra quadra.`);
   filaSnackbarSilenciadoAte = Date.now() + 900;
   const j = fila[idx];
   const key = filaKeys[idx];
@@ -550,11 +568,14 @@ window.iniciarPartida = function (i) {
 window.ajustarInicio = async function (i) {
   const q = quadras.find((x) => x.id === i);
   const hm = await perguntarAdmin("Que horas começou?", "Ajustar início", "Ex: 14:30");
-  if (!hm || !hm.includes(":")) return;
-  const [h, m] = hm.split(":");
+  if (!hm) return;
+  const partes = String(hm).trim().match(/^(\d{1,2}):(\d{2})$/);
+  const h = partes ? Number(partes[1]) : NaN;
+  const m = partes ? Number(partes[2]) : NaN;
+  if (!partes || h > 23 || m > 59) return avisoAdmin("Hora inválida! Use o formato HH:MM, ex: 14:30.");
   const ag = new Date();
   const ini = new Date();
-  ini.setHours(parseInt(h)); ini.setMinutes(parseInt(m)); ini.setSeconds(0);
+  ini.setHours(h); ini.setMinutes(m); ini.setSeconds(0);
   if (ini > ag) return avisoAdmin("Hora de início não pode ser no futuro!");
   q.rodando = true; q.pausada = false;
   q.hEntrada = formatarHora(ini);
@@ -684,17 +705,20 @@ function perguntarWhatsappAdmin() {
 }
 
 document.getElementById("btnAdicionarFila").addEventListener("click", async () => {
+  const btn = document.getElementById("btnAdicionarFila");
+  if (btn.disabled) return;
   const n = [1, 2, 3, 4].map((i) => document.getElementById(`j${i}_nome`).value.trim()).filter((x) => x !== "");
   const ql = [1, 2, 3, 4].map((i) => document.getElementById(`j${i}_ql`).value.trim()).filter((x) => x !== "");
   const min = tipoSelecionado === "45" ? 2 : 3;
   if (n.length < min) return avisoAdmin(`Mínimo ${min} jogadores!`);
-  const avisoWpp = await perguntarWhatsappAdmin();
-  const nj = {
-    id: Date.now(), nomes: n.join(" • "), detalhes: ql.join(", "), duracao: parseInt(tipoSelecionado),
-    chegada: new Date().toISOString(), jogadores: n, qls: ql, origem: "admin",
-    criadoPorUid: auth.currentUser?.uid || "admin", desejaWhatsapp: avisoWpp.desejaWhatsapp
-  };
+  btn.disabled = true;
   try {
+    const avisoWpp = await perguntarWhatsappAdmin();
+    const nj = {
+      id: Date.now(), nomes: n.join(" • "), detalhes: ql.join(", "), duracao: parseInt(tipoSelecionado),
+      chegada: new Date().toISOString(), jogadores: n, qls: ql, origem: "admin",
+      criadoPorUid: auth.currentUser?.uid || "admin", desejaWhatsapp: avisoWpp.desejaWhatsapp
+    };
     const novoRef = await push(ref(db, "fila"), nj);
     if (avisoWpp.desejaWhatsapp && avisoWpp.whatsapp) {
       const contato = { whatsapp: avisoWpp.whatsapp, criadoPorUid: auth.currentUser?.uid || "admin", criadoEm: Date.now(), origem: "admin" };
@@ -704,7 +728,11 @@ document.getElementById("btnAdicionarFila").addEventListener("click", async () =
     }
     document.querySelectorAll("#playersGrid input").forEach((i) => (i.value = ""));
     mostrarSnackbar("Inscrição adicionada à fila.", "success");
-  } catch (e) { avisoAdmin("Erro ao adicionar: " + e); }
+  } catch (e) {
+    avisoAdmin("Erro ao adicionar: " + e);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 window.removerFila = async function (id) {

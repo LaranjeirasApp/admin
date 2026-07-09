@@ -33,6 +33,10 @@
       <span>Senha</span>
       <input id="loginPass" type="password" autocomplete="current-password" required />
     </label>
+    <label class="login-remember">
+      <input type="checkbox" id="loginLembrar" />
+      <span>Lembrar de mim neste dispositivo</span>
+    </label>
     <p class="login-error" id="loginError">Usuário ou senha incorretos.</p>
     <button type="submit" class="btn btn-solid btn-block">Entrar</button>
   </form>
@@ -178,7 +182,7 @@
     <h3 id="modalQuadraTitulo">Escolher quadra</h3>
     <p id="modalQuadraTexto"></p>
     <div class="quadra-pick-grid" id="modalQuadraGrid"></div>
-    <div class="modal-actions single">
+    <div class="modal-actions">
       <button class="btn btn-ghost btn-block" id="modalQuadraCancelar">Cancelar</button>
     </div>
   </div>

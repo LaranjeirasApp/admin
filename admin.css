@@ -120,6 +120,23 @@ body:not(.locked) .login-veil { display: none; }
 }
 .field input:focus, .field-input:focus { outline: 2px solid var(--primary); }
 
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .82rem;
+  color: var(--ink-soft);
+  margin: .1rem 0 .85rem;
+  cursor: pointer;
+  user-select: none;
+}
+.login-remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 .login-error {
   color: var(--danger);
   font-size: .8rem;
@@ -802,7 +819,7 @@ body.dark .court-actions .btn-solid, body.dark .court-actions .btn-danger, body.
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
+  z-index: 100;
   padding: 1rem;
   opacity: 0;
   visibility: hidden;
