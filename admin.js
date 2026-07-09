@@ -1210,9 +1210,8 @@ function ativarSwipeParaRemover() {
       if (decided && isHorizontal && dx < -LIMIAR) {
         wrap.classList.add("swiped");
         const id = Number(wrap.dataset.id);
-        const confirmou = await confirmarAdmin("Remover este jogo da fila?", "Remover da fila", true);
-        if (confirmou) window.removerFila(id);
-        else wrap.classList.remove("swiped");
+        await window.removerFila(id);
+        wrap.classList.remove("swiped");
       }
       startX = null; decided = false; isHorizontal = false;
     });
